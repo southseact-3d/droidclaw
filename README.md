@@ -25,7 +25,7 @@ skills system, and heartbeat/cron scheduling.
 |---|---|---|
 | **Nvidia NIM** | `https://integrate.api.nvidia.com/v1` | OpenAI-compatible, access to Llama, Mistral, Nemotron |
 | **OpenRouter** | `https://openrouter.ai/api/v1` | 200+ models, pay-per-use |
-| **Kilo Gateway** | `https://api.kilo.dev/v1` | Claude, GPT-4o and more via single key |
+| **Kilo Gateway** | `https://api.kilo.ai/api/gateway/` | Claude, GPT-4o and more via single key |
 
 All three use the OpenAI-compatible chat completions endpoint. Add your API key in Settings and the app tries providers in priority order, falling back automatically on any error.
 

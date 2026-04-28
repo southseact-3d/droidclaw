@@ -1,5 +1,6 @@
 package com.agentapp.agent
 
+import android.util.Log
 import com.agentapp.data.db.MessageDao
 import com.agentapp.data.db.SkillDao
 import com.agentapp.data.db.MpcDao
@@ -23,6 +24,7 @@ class AgentCore @Inject constructor(
     private val mpcDao: MpcDao,
     private val settingsRepo: SettingsRepository
 ) {
+    private val TAG = "AgentCore"
     private val gson = Gson()
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -32,6 +34,7 @@ class AgentCore @Inject constructor(
         userText: String,
         sessionId: String
     ): Flow<LlmResult> = flow {
+        Log.d(TAG, "Starting chat for session $sessionId: $userText")
         val providers = settingsRepo.providers.first()
         val systemPrompt = settingsRepo.systemPrompt.first()
         val skills = skillDao.getEnabledSkills()
@@ -91,11 +94,14 @@ class AgentCore @Inject constructor(
                     emit(result)
                 }
                 is LlmResult.Error -> {
+                    Log.e(TAG, "Chat error: ${result.message}")
                     // Check if error suggests we should try a tool
                     if (availableTools.isNotEmpty() && !toolUsed) {
+                        Log.d(TAG, "Attempting tool fallback after error")
                         toolUsed = true
                         val toolResult = tryExecuteRelevantTool(userText, availableTools)
                         if (toolResult != null && toolResult.success) {
+                            Log.d(TAG, "Tool execution successful, re-prompting LLM")
                             // Re-prompt with tool result
                             val retryMessages = messages.toMutableList().apply {
                                 add(ChatMessage("assistant", fullResponse))

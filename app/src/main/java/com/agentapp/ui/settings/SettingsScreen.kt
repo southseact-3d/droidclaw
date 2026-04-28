@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -311,6 +312,7 @@ private fun MpcServerEditDialog(
     onDismiss: () -> Unit,
     onTestConnection: suspend (MpcServer) -> Boolean
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf(server?.name ?: "") }
     var url by remember { mutableStateOf(server?.url ?: "") }
     var secret by remember { mutableStateOf(server?.secret ?: "") }

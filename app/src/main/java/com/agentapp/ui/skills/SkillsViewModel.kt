@@ -130,8 +130,7 @@ class SkillsViewModel @Inject constructor(
     fun refreshMpcTools() {
         viewModelScope.launch {
             _state.update { it.copy(isRefreshingTools = true) }
-            val servers = mpcDao.getEnabledServers()
-            servers.forEach { server ->
+            mpcDao.getEnabledServers().first().forEach { server ->
                 loadToolsFromServer(server)
             }
             _state.update { it.copy(isRefreshingTools = false) }

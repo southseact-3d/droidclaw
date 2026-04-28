@@ -2,6 +2,7 @@ package com.agentapp.agent
 
 import com.agentapp.data.db.MessageDao
 import com.agentapp.data.db.SkillDao
+import com.agentapp.data.db.MpcDao
 import com.agentapp.data.models.*
 import com.agentapp.data.repository.SettingsRepository
 import com.agentapp.providers.*
@@ -19,6 +20,7 @@ class AgentCore @Inject constructor(
     private val mpcClient: MpcClient,
     private val messageDao: MessageDao,
     private val skillDao: SkillDao,
+    private val mpcDao: MpcDao,
     private val settingsRepo: SettingsRepository
 ) {
     private val gson = Gson()
@@ -58,18 +60,18 @@ class AgentCore @Inject constructor(
             userText
         )
 
-        // Check if we have tools that could be relevant
-        val availableTools = if (mpcServers.isNotEmpty()) {
-            mpcServers.flatMap { server ->
-                try {
-                    skillDao.getToolsForServer(server.id).map { it to server }
-                } catch (e: Exception) {
-                    emptyList()
-                }
+    // Check if we have tools that could be relevant
+    val availableTools = if (mpcServers.isNotEmpty()) {
+        mpcServers.flatMap { server ->
+            try {
+                mpcDao.getToolsForServer(server.id).map { it to server }
+            } catch (e: Exception) {
+                emptyList()
             }
-        } else {
-            emptyList()
         }
+    } else {
+        emptyList()
+    }
 
         var fullResponse = ""
         var usedProvider = ""
@@ -172,15 +174,15 @@ class AgentCore @Inject constructor(
             )
         )
 
-        return try {
-            // Try to execute relevant tools first if any seem applicable
-            val mpcTools = mpcServers.flatMap { server ->
-                try {
-                    skillDao.getToolsForServer(server.id).map { it to server }
-                } catch (e: Exception) {
-                    emptyList()
-                }
+    return try {
+        // Try to execute relevant tools first if any seem applicable
+        val mpcTools = mpcServers.flatMap { server ->
+            try {
+                mpcDao.getToolsForServer(server.id).map { it to server }
+            } catch (e: Exception) {
+                emptyList()
             }
+        }
 
             var toolResultContext = ""
             if (mpcTools.isNotEmpty()) {
@@ -259,15 +261,15 @@ class AgentCore @Inject constructor(
             ChatMessage("user", job.prompt)
         )
 
-        return try {
-            // Check if job prompt suggests tool usage
-            val mpcTools = mpcServers.flatMap { server ->
-                try {
-                    skillDao.getToolsForServer(server.id).map { it to server }
-                } catch (e: Exception) {
-                    emptyList()
-                }
+    return try {
+        // Check if job prompt suggests tool usage
+        val mpcTools = mpcServers.flatMap { server ->
+            try {
+                mpcDao.getToolsForServer(server.id).map { it to server }
+            } catch (e: Exception) {
+                emptyList()
             }
+        }
 
             var toolResultContext = ""
             if (mpcTools.isNotEmpty()) {

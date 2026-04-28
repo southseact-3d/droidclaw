@@ -1,7 +1,6 @@
 package com.agentapp.data.db
 
 import androidx.room.*
-import androidx.room.migration.AutoMigrationSpec
 import com.agentapp.data.models.*
 import kotlinx.coroutines.flow.Flow
 
@@ -102,10 +101,7 @@ interface SessionDao {
 @Database(
     entities = [Message::class, Skill::class, ScheduledJob::class, Session::class, MpcServer::class, MpcTool::class],
     version = 2,
-    exportSchema = true,
-    autoMigrations = [
-        AutoMigration(from = 1, to = 2, spec = AgentDatabase.AutoMigration1To2::class)
-    ]
+    exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AgentDatabase : RoomDatabase() {
@@ -114,11 +110,4 @@ abstract class AgentDatabase : RoomDatabase() {
     abstract fun scheduledJobDao(): ScheduledJobDao
     abstract fun sessionDao(): SessionDao
     abstract fun mpcDao(): MpcDao
-
-    // Auto-migration from version 1 to 2
-    @RenameTable(from = "skill", to = "skills")
-    @RenameTable(from = "scheduled_job", to = "scheduled_jobs")
-    @RenameTable(from = "session", to = "sessions")
-    @RenameTable(from = "message", to = "messages")
-    class AutoMigration1To2 : AutoMigrationSpec
 }

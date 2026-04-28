@@ -55,7 +55,7 @@ class SettingsRepository @Inject constructor(
                 type = com.agentapp.data.models.ProviderType.KILO_GATEWAY,
                 apiKey = "",
                 model = "claude-3-5-sonnet-20241022",
-                baseUrl = "https://api.kilo.dev/v1",
+                baseUrl = "https://api.kilo.ai/api/gateway/",
                 enabled = false,
                 priority = 2
             )

@@ -1,11 +1,15 @@
 package com.agentapp.providers
 
+import android.util.Log
 import com.agentapp.data.models.ProviderConfig
 import com.agentapp.data.models.ProviderType
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,6 +24,8 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+
+private const val TAG = "LlmProviderClient"
 
 data class ChatMessage(val role: String, val content: String)
 
@@ -59,6 +65,7 @@ class LlmProviderClient @Inject constructor() {
             .sortedBy { it.priority }
 
         if (sorted.isEmpty()) {
+            Log.w(TAG, "No providers configured or enabled")
             emit(LlmResult.Error("No providers configured. Add an API key in Settings.", null))
             return@flow
         }
@@ -66,35 +73,58 @@ class LlmProviderClient @Inject constructor() {
         val errors = mutableListOf<ProviderError>()
 
         for (provider in sorted) {
-            try {
-                var fullText = ""
-                var failed = false
+            var lastAttemptError = ""
+            for (attempt in 1..3) {
+                Log.d(TAG, "Trying provider ${provider.type} (attempt $attempt/3)")
+                try {
+                    var tokensEmitted = false
+                    var failed = false
+                    var providerError: String? = null
 
-                streamChat(messages, provider, maxTokens, temperature).collect { chunk ->
-                    when (chunk) {
-                        is LlmResult.Token -> {
-                            fullText += chunk.text
-                            emit(chunk)
-                        }
-                        is LlmResult.Complete -> {
-                            emit(chunk)
-                        }
-                        is LlmResult.Error -> {
-                            failed = true
-                            errors.add(ProviderError(provider, chunk.message))
+                    streamChat(messages, provider, maxTokens, temperature).collect { chunk ->
+                        when (chunk) {
+                            is LlmResult.Token -> {
+                                tokensEmitted = true
+                                emit(chunk)
+                            }
+                            is LlmResult.Complete -> {
+                                emit(chunk)
+                            }
+                            is LlmResult.Error -> {
+                                failed = true
+                                providerError = chunk.message
+                                Log.e(TAG, "Provider ${provider.type} emitted error: $providerError")
+                            }
                         }
                     }
+
+                    if (!failed) {
+                        Log.i(TAG, "Successfully completed chat with provider ${provider.type}")
+                        return@flow   // success — stop trying providers
+                    }
+
+                    lastAttemptError = providerError ?: "Unknown error"
+                    if (tokensEmitted) {
+                        Log.w(TAG, "Provider ${provider.type} failed after emitting tokens. Not retrying this provider.")
+                        break // Don't retry if we already started streaming tokens
+                    }
+
+                } catch (e: Exception) {
+                    lastAttemptError = e.message ?: e.toString()
+                    Log.e(TAG, "Exception during provider ${provider.type} call (attempt $attempt/3): $lastAttemptError", e)
                 }
 
-                if (!failed) return@flow   // success — stop trying providers
-
-            } catch (e: Exception) {
-                errors.add(ProviderError(provider, e.message ?: "Unknown error"))
+                if (attempt < 3) {
+                    Log.d(TAG, "Retrying provider ${provider.type} in 1s...")
+                    delay(1000)
+                }
             }
+            errors.add(ProviderError(provider, lastAttemptError))
         }
 
         // All providers failed
         val summary = errors.joinToString("\n") { "• ${it.provider.type.displayName}: ${it.error}" }
+        Log.e(TAG, "All providers failed:\n$summary")
         emit(LlmResult.Error("All providers failed:\n$summary", null))
     }
 
@@ -111,20 +141,33 @@ class LlmProviderClient @Inject constructor() {
             .filter { it.enabled && it.apiKey.isNotBlank() }
             .sortedBy { it.priority }
 
-        if (sorted.isEmpty()) throw IllegalStateException("No providers configured")
+        if (sorted.isEmpty()) {
+            Log.w(TAG, "chatOnce: No providers configured")
+            throw IllegalStateException("No providers configured")
+        }
 
         val errors = mutableListOf<String>()
 
         for (provider in sorted) {
-            try {
-                val result = nonStreamingChat(messages, provider, maxTokens)
-                return Pair(result, provider.type)
-            } catch (e: Exception) {
-                errors.add("${provider.type.displayName}: ${e.message}")
+            var lastAttemptError = ""
+            for (attempt in 1..3) {
+                Log.d(TAG, "chatOnce: Trying provider ${provider.type} (attempt $attempt/3)")
+                try {
+                    val result = nonStreamingChat(messages, provider, maxTokens)
+                    Log.i(TAG, "chatOnce: Provider ${provider.type} succeeded")
+                    return Pair(result, provider.type)
+                } catch (e: Exception) {
+                    lastAttemptError = "${provider.type.displayName}: ${e.message}"
+                    Log.e(TAG, "chatOnce: Provider ${provider.type} failed (attempt $attempt/3): ${e.message}")
+                }
+                if (attempt < 3) delay(1000)
             }
+            errors.add(lastAttemptError)
         }
 
-        throw IOException("All providers failed:\n${errors.joinToString("\n")}")
+        val fullError = "All providers failed:\n${errors.joinToString("\n")}"
+        Log.e(TAG, "chatOnce: $fullError")
+        throw IOException(fullError)
     }
 
     // ── Internal streaming ────────────────────────────────────────────────────
@@ -134,64 +177,70 @@ class LlmProviderClient @Inject constructor() {
         provider: ProviderConfig,
         maxTokens: Int,
         temperature: Float
-    ): Flow<LlmResult> = flow {
+    ): Flow<LlmResult> = callbackFlow {
         val body = buildRequestBody(messages, provider, maxTokens, temperature, stream = true)
         val request = buildRequest(provider, body)
 
-        suspendCancellableCoroutine<Unit> { cont ->
-            val factory = EventSources.createFactory(client)
-            val fullText = StringBuilder()
-            var completed = false
+        Log.d(TAG, "Streaming from ${provider.type} at ${request.url}")
 
-            val listener = object : EventSourceListener() {
-                override fun onEvent(source: EventSource, id: String?, type: String?, data: String) {
-                    if (data == "[DONE]") {
-                        if (!completed) {
-                            completed = true
-                            cont.resume(Unit)
-                        }
-                        return
-                    }
-                    try {
-                        val json = gson.fromJson(data, JsonObject::class.java)
-                        val delta = json
-                            ?.getAsJsonArray("choices")
-                            ?.firstOrNull()
-                            ?.asJsonObject
-                            ?.getAsJsonObject("delta")
-                            ?.get("content")
-                            ?.asString ?: return
-                        if (delta.isNotEmpty()) {
-                            fullText.append(delta)
-                            // We can't emit here (not in coroutine scope), so we accumulate
-                            // The flow collector will see Complete at the end
-                        }
-                    } catch (_: Exception) {}
-                }
+        val factory = EventSources.createFactory(client)
+        val fullText = StringBuilder()
+        var completed = false
 
-                override fun onClosed(source: EventSource) {
+        val listener = object : EventSourceListener() {
+            override fun onEvent(source: EventSource, id: String?, type: String?, data: String) {
+                if (data == "[DONE]") {
                     if (!completed) {
                         completed = true
-                        cont.resume(Unit)
+                        trySend(LlmResult.Complete(fullText.toString(), provider.type, null))
+                        close()
                     }
+                    return
                 }
-
-                override fun onFailure(source: EventSource, t: Throwable?, response: Response?) {
-                    if (!completed) {
-                        completed = true
-                        val msg = t?.message ?: response?.message ?: "Stream failed"
-                        cont.resumeWithException(IOException(msg))
+                try {
+                    val json = gson.fromJson(data, JsonObject::class.java)
+                    val delta = json
+                        ?.getAsJsonArray("choices")
+                        ?.firstOrNull()
+                        ?.asJsonObject
+                        ?.getAsJsonObject("delta")
+                        ?.get("content")
+                        ?.asString ?: return
+                    if (delta.isNotEmpty()) {
+                        fullText.append(delta)
+                        trySend(LlmResult.Token(delta, provider.type))
                     }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error parsing SSE data: ${e.message}")
                 }
             }
 
-            val es = factory.newEventSource(request, listener)
-            cont.invokeOnCancellation { es.cancel() }
+            override fun onClosed(source: EventSource) {
+                if (!completed) {
+                    completed = true
+                    trySend(LlmResult.Complete(fullText.toString(), provider.type, null))
+                    close()
+                }
+            }
+
+            override fun onFailure(source: EventSource, t: Throwable?, response: Response?) {
+                if (!completed) {
+                    completed = true
+                    val errorBody = try { response?.body?.string() } catch (e: Exception) { null }
+                    val msg = t?.message ?: response?.message ?: "Stream failed"
+                    val fullMsg = if (errorBody != null) "$msg. Body: $errorBody" else msg
+                    Log.e(TAG, "Stream failure for ${provider.type}: $fullMsg", t)
+                    trySend(LlmResult.Error(fullMsg, provider.type))
+                    close()
+                }
+            }
         }
 
-        // For simplicity emit as single complete token (SSE accumulation)
-        // Production: refactor to channel-based approach for true token streaming
-        emit(LlmResult.Complete("", provider.type, null))
+        val es = factory.newEventSource(request, listener)
+        awaitClose { 
+            Log.d(TAG, "Closing stream for ${provider.type}")
+            es.cancel() 
+        }
     }
 
     // ── Internal non-streaming ────────────────────────────────────────────────
@@ -204,24 +253,28 @@ class LlmProviderClient @Inject constructor() {
         val body = buildRequestBody(messages, provider, maxTokens, 0.7f, stream = false)
         val request = buildRequest(provider, body)
 
+        Log.d(TAG, "Requesting ${provider.type} at ${request.url}")
+
         val call = client.newCall(request)
         cont.invokeOnCancellation { call.cancel() }
 
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "Network failure for ${provider.type}: ${e.message}")
                 cont.resumeWithException(e)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use { resp ->
+                    val bodyString = resp.body?.string()
                     if (!resp.isSuccessful) {
-                        cont.resumeWithException(
-                            IOException("HTTP ${resp.code}: ${resp.message}")
-                        )
+                        val msg = "HTTP ${resp.code}: ${resp.message}. Body: ${bodyString ?: "No body"}"
+                        Log.e(TAG, "HTTP error from ${provider.type}: $msg")
+                        cont.resumeWithException(IOException(msg))
                         return
                     }
                     try {
-                        val json = gson.fromJson(resp.body?.string(), JsonObject::class.java)
+                        val json = gson.fromJson(bodyString, JsonObject::class.java)
                         val content = json
                             ?.getAsJsonArray("choices")
                             ?.firstOrNull()
@@ -229,9 +282,10 @@ class LlmProviderClient @Inject constructor() {
                             ?.getAsJsonObject("message")
                             ?.get("content")
                             ?.asString
-                            ?: throw IOException("Unexpected response format")
+                            ?: throw IOException("Unexpected response format: $bodyString")
                         cont.resume(content)
                     } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing response from ${provider.type}: ${e.message}")
                         cont.resumeWithException(e)
                     }
                 }
@@ -319,7 +373,7 @@ val ProviderType.displayName get() = when (this) {
 val ProviderType.defaultBaseUrl get() = when (this) {
     ProviderType.NVIDIA_NIM    -> "https://integrate.api.nvidia.com/v1"
     ProviderType.OPENROUTER    -> "https://openrouter.ai/api/v1"
-    ProviderType.KILO_GATEWAY  -> "https://api.kilo.dev/v1"
+    ProviderType.KILO_GATEWAY  -> "https://api.kilo.ai/api/gateway/"
 }
 
 val ProviderType.modelSuggestions get() = when (this) {

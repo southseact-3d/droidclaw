@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
@@ -34,19 +35,23 @@ class HeartbeatWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
+        Log.d("HeartbeatWorker", "Heartbeat tick started")
         // Check active hours
         val startHour = settingsRepo.activeHoursStart.first()
         val endHour = settingsRepo.activeHoursEnd.first()
         val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
         if (currentHour < startHour || currentHour >= endHour) {
+            Log.d("HeartbeatWorker", "Outside active hours ($startHour-$endHour), current hour: $currentHour. Skipping.")
             return Result.success() // Outside active hours — skip silently
         }
 
         val heartbeatMd = settingsRepo.heartbeatMd.first()
+        Log.d("HeartbeatWorker", "Running heartbeat check...")
         val result = agentCore.runHeartbeat(heartbeatMd)
 
         if (result.needsAttention && result.summary != null) {
+            Log.i("HeartbeatWorker", "Heartbeat needs attention: ${result.summary.take(50)}...")
             val notificationsEnabled = settingsRepo.notificationsEnabled.first()
             if (notificationsEnabled) {
                 postNotification(
@@ -56,9 +61,15 @@ class HeartbeatWorker @AssistedInject constructor(
                     notifId = HEARTBEAT_NOTIF_ID
                 )
             }
+        } else {
+            Log.d("HeartbeatWorker", "Heartbeat OK or no attention needed")
         }
 
-        return if (result.error != null) Result.retry() else Result.success()
+        if (result.error != null) {
+            Log.e("HeartbeatWorker", "Heartbeat failed with error: ${result.error}")
+            return Result.retry()
+        }
+        return Result.success()
     }
 
     companion object {
@@ -104,14 +115,23 @@ class CronWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val jobId = inputData.getString(KEY_JOB_ID) ?: return Result.failure()
-        val job = scheduledJobDao.getJob(jobId) ?: return Result.failure()
+        Log.d("CronWorker", "Cron job started: $jobId")
+        val job = scheduledJobDao.getJob(jobId) ?: run {
+            Log.e("CronWorker", "Job not found: $jobId")
+            return Result.failure()
+        }
 
-        if (job.status != JobStatus.ACTIVE) return Result.success()
+        if (job.status != JobStatus.ACTIVE) {
+            Log.d("CronWorker", "Job $jobId is not active. Skipping.")
+            return Result.success()
+        }
 
+        Log.d("CronWorker", "Executing job ${job.name}...")
         val result = agentCore.runCronJob(job)
         scheduledJobDao.recordRun(jobId, System.currentTimeMillis())
 
         if (result.success && result.result != null && job.notifyOnResult) {
+            Log.i("CronWorker", "Job ${job.name} completed successfully, posting notification")
             val notificationsEnabled = settingsRepo.notificationsEnabled.first()
             if (notificationsEnabled) {
                 postNotification(
@@ -121,6 +141,10 @@ class CronWorker @AssistedInject constructor(
                     notifId = jobId.hashCode()
                 )
             }
+        } else if (!result.success) {
+            Log.e("CronWorker", "Job ${job.name} failed: ${result.error}")
+        } else {
+            Log.d("CronWorker", "Job ${job.name} completed (notifications disabled or no result)")
         }
 
         return if (result.success) Result.success() else Result.retry()

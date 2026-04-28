@@ -35,7 +35,8 @@ data class Message(
     val timestamp: Long = System.currentTimeMillis(),
     val providerUsed: String? = null,
     val tokenCount: Int? = null,
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val toolsUsed: String? = null
 )
 
 // ── Skills ────────────────────────────────────────────────────────────────────

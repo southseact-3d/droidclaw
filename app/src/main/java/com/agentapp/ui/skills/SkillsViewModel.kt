@@ -3,7 +3,9 @@ package com.agentapp.ui.skills
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.agentapp.data.db.SkillDao
-import com.agentapp.data.models.Skill
+import com.agentapp.data.db.MpcDao
+import com.agentapp.data.models.*
+import com.agentapp.providers.MpcClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -14,14 +16,18 @@ import javax.inject.Inject
 
 data class SkillsUiState(
     val skills: List<Skill> = emptyList(),
+    val mpcTools: List<Pair<MpcTool, MpcServer>> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshingTools: Boolean = false,
     val error: String? = null,
     val showAddDialog: Boolean = false
 )
 
 @HiltViewModel
 class SkillsViewModel @Inject constructor(
-    private val skillDao: SkillDao
+    private val skillDao: SkillDao,
+    private val mpcDao: MpcDao,
+    private val mpcClient: MpcClient
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SkillsUiState())
@@ -33,6 +39,25 @@ class SkillsViewModel @Inject constructor(
         viewModelScope.launch {
             skillDao.getAllSkills().collect { skills ->
                 _state.update { it.copy(skills = skills) }
+            }
+        }
+        viewModelScope.launch {
+            mpcDao.getEnabledServers().forEach { server ->
+                loadToolsFromServer(server)
+            }
+        }
+        // Combine tools and servers for display
+        viewModelScope.launch {
+            combine(
+                mpcDao.getToolsForServers(mpcDao.getEnabledServers().map { it.id }),
+                mpcDao.getEnabledServers()
+            ) { tools, servers ->
+                tools.map { tool ->
+                    val server = servers.find { it.id == tool.serverId }!!
+                    tool to server
+                }
+            }.collect { toolsWithServers ->
+                _state.update { it.copy(mpcTools = toolsWithServers) }
             }
         }
     }
@@ -58,14 +83,14 @@ class SkillsViewModel @Inject constructor(
                 val content = response.body?.string() ?: throw Exception("Empty response")
 
                 // Parse SKILL.md front-matter
-                val name = parseFrontMatter(content, "name") ?: url.substringAfterLast("/")
-                val description = parseFrontMatter(content, "description") ?: ""
+                val (name, description, toolDefs) = parseFrontMatter(content)
 
                 val skill = Skill(
                     id = UUID.randomUUID().toString(),
-                    name = name,
-                    description = description,
+                    name = name ?: url.substringAfterLast("/"),
+                    description = description ?: "",
                     markdownContent = content,
+                    toolDefinitions = toolDefs ?: "[]",
                     sourceUrl = url
                 )
                 skillDao.insert(skill)
@@ -83,10 +108,35 @@ class SkillsViewModel @Inject constructor(
                 id = UUID.randomUUID().toString(),
                 name = name,
                 description = description,
-                markdownContent = content
+                markdownContent = content,
+                toolDefinitions = "[]"
             )
             skillDao.insert(skill)
             _state.update { it.copy(showAddDialog = false) }
+        }
+    }
+
+    fun refreshMpcTools() {
+        viewModelScope.launch {
+            _state.update { it.copy(isRefreshingTools = true) }
+            val servers = mpcDao.getEnabledServers()
+            servers.forEach { server ->
+                loadToolsFromServer(server)
+            }
+            _state.update { it.copy(isRefreshingTools = false) }
+        }
+    }
+
+    private suspend fun loadToolsFromServer(server: MpcServer) {
+        try {
+            val tools = mpcClient.listTools(server)
+            mpcDao.deleteToolsForServer(server.id)
+            tools.forEach { tool ->
+                mpcDao.insertTool(tool.copy(serverId = server.id))
+            }
+        } catch (e: Exception) {
+            // Server unreachable - remove cached tools
+            mpcDao.deleteToolsForServer(server.id)
         }
     }
 
@@ -94,8 +144,34 @@ class SkillsViewModel @Inject constructor(
     fun hideAddDialog() = _state.update { it.copy(showAddDialog = false, error = null) }
     fun dismissError() = _state.update { it.copy(error = null) }
 
-    private fun parseFrontMatter(content: String, key: String): String? {
-        val pattern = Regex("^$key:\\s*(.+)$", RegexOption.MULTILINE)
-        return pattern.find(content)?.groupValues?.get(1)?.trim()
+    private fun parseFrontMatter(content: String): Triple<String?, String?, String?> {
+        val lines = content.lines()
+        if (lines.size < 3 || lines[0] != "---") {
+            return Triple(null, null, null)
+        }
+        var name: String? = null
+        var description: String? = null
+        var toolDefs: String? = null
+        var inFrontMatter = true
+
+        for (i in 1 until lines.size) {
+            if (lines[i] == "---") {
+                inFrontMatter = false
+                break
+            }
+            val colon = lines[i].indexOf(":")
+            if (colon > 0) {
+                val key = lines[i].substring(0, colon)
+                val value = lines[i].substring(colon + 1).trim()
+                when (key) {
+                    "name" -> name = value
+                    "description" -> description = value
+                    "version" -> {}
+                    "tools" -> { // Could parse tool definitions here
+                    }
+                }
+            }
+        }
+        return Triple(name, description, toolDefs)
     }
 }

@@ -99,8 +99,8 @@ interface SessionDao {
 // ── Database ──────────────────────────────────────────────────────────────────
 
 @Database(
-    entities = [Message::class, Skill::class, ScheduledJob::class, Session::class],
-    version = 1,
+    entities = [Message::class, Skill::class, ScheduledJob::class, Session::class, MpcServer::class, MpcTool::class],
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -109,4 +109,11 @@ abstract class AgentDatabase : RoomDatabase() {
     abstract fun skillDao(): SkillDao
     abstract fun scheduledJobDao(): ScheduledJobDao
     abstract fun sessionDao(): SessionDao
+    abstract fun mpcDao(): MpcDao
 }
+
+// Auto-migration from version 1 to 2
+@RenameTable(from = "skill", to = "skills")
+@RenameTable(from = "scheduled_job", to = "scheduled_jobs")
+@RenameTable(from = "session", to = "sessions")
+@RenameTable(from = "message", to = "messages")

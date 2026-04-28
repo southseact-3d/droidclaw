@@ -4,8 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
-import com.agentapp.data.models.ProviderConfig
-import com.agentapp.data.models.ProviderType
+import com.agentapp.data.models.MpcServer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -32,26 +31,28 @@ class SettingsRepository @Inject constructor(
         val KEY_ACTIVE_HOURS_END = intPreferencesKey("active_hours_end")
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val KEY_SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
+        val KEY_MPC_SERVERS = stringPreferencesKey("mpc_servers")
+        val KEY_MPC_ENABLED = booleanPreferencesKey("mpc_enabled")
 
         val DEFAULT_PROVIDERS = listOf(
-            ProviderConfig(
-                type = ProviderType.NVIDIA_NIM,
+            com.agentapp.data.models.ProviderConfig(
+                type = com.agentapp.data.models.ProviderType.NVIDIA_NIM,
                 apiKey = "",
                 model = "meta/llama-3.3-70b-instruct",
                 baseUrl = "https://integrate.api.nvidia.com/v1",
                 enabled = false,
                 priority = 0
             ),
-            ProviderConfig(
-                type = ProviderType.OPENROUTER,
+            com.agentapp.data.models.ProviderConfig(
+                type = com.agentapp.data.models.ProviderType.OPENROUTER,
                 apiKey = "",
                 model = "anthropic/claude-3.5-sonnet",
                 baseUrl = "https://openrouter.ai/api/v1",
                 enabled = false,
                 priority = 1
             ),
-            ProviderConfig(
-                type = ProviderType.KILO_GATEWAY,
+            com.agentapp.data.models.ProviderConfig(
+                type = com.agentapp.data.models.ProviderType.KILO_GATEWAY,
                 apiKey = "",
                 model = "claude-3-5-sonnet-20241022",
                 baseUrl = "https://api.kilo.dev/v1",
@@ -61,26 +62,46 @@ class SettingsRepository @Inject constructor(
         )
 
         val DEFAULT_SYSTEM_PROMPT = """
-You are a personal AI assistant running on Android. You are helpful, concise, and action-oriented.
+            You are a personal AI assistant running on Android. You are helpful, concise, and action-oriented.
 
-When running a heartbeat check, review the HEARTBEAT.md checklist if provided and respond with HEARTBEAT_OK if there is nothing requiring attention. Only notify the user if something genuinely needs their attention.
+            When running a heartbeat check, review the HEARTBEAT.md checklist if provided and respond with HEARTBEAT_OK if there is nothing requiring attention. Only notify the user if something genuinely needs their attention.
 
-When using tools from skills, call them precisely and report results clearly.
+            When using tools from skills, call them precisely and report results clearly.
         """.trimIndent()
     }
 
-    val providers: Flow<List<ProviderConfig>> = context.dataStore.data.map { prefs ->
+    // LLM Providers
+    val providers: Flow<List<com.agentapp.data.models.ProviderConfig>> = context.dataStore.data.map { prefs ->
         val json = prefs[KEY_PROVIDERS]
         if (json.isNullOrBlank()) {
             DEFAULT_PROVIDERS
         } else {
             try {
-                val type = object : TypeToken<List<ProviderConfig>>() {}.type
+                val type = object : TypeToken<List<com.agentapp.data.models.ProviderConfig>>() {}.type
                 gson.fromJson(json, type)
             } catch (e: Exception) {
                 DEFAULT_PROVIDERS
             }
         }
+    }
+
+    // MCP Servers
+    val mpcServers: Flow<List<MpcServer>> = context.dataStore.data.map { prefs ->
+        val json = prefs[KEY_MPC_SERVERS]
+        if (json.isNullOrBlank()) {
+            emptyList()
+        } else {
+            try {
+                val type = object : TypeToken<List<MpcServer>>() {}.type
+                gson.fromJson(json, type)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    val mpcEnabled: Flow<Boolean> = context.dataStore.data.map {
+        it[KEY_MPC_ENABLED] ?: true
     }
 
     val heartbeatEnabled: Flow<Boolean> = context.dataStore.data.map {
@@ -115,8 +136,16 @@ When using tools from skills, call them precisely and report results clearly.
         it[KEY_ACTIVE_SESSION] ?: "main"
     }
 
-    suspend fun saveProviders(providers: List<ProviderConfig>) {
+    suspend fun saveProviders(providers: List<com.agentapp.data.models.ProviderConfig>) {
         context.dataStore.edit { it[KEY_PROVIDERS] = gson.toJson(providers) }
+    }
+
+    suspend fun saveMpcServers(servers: List<MpcServer>) {
+        context.dataStore.edit { it[KEY_MPC_SERVERS] = gson.toJson(servers) }
+    }
+
+    suspend fun setMpcEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MPC_ENABLED] = enabled }
     }
 
     suspend fun setHeartbeatEnabled(enabled: Boolean) {
@@ -150,17 +179,17 @@ When using tools from skills, call them precisely and report results clearly.
         context.dataStore.edit { it[KEY_ACTIVE_SESSION] = sessionId }
     }
 
-    suspend fun getProvidersOnce(): List<ProviderConfig> {
+    suspend fun getProvidersOnce(): List<com.agentapp.data.models.ProviderConfig> {
         var result = DEFAULT_PROVIDERS
-        context.dataStore.data.map { prefs ->
+        context.dataStore.data.collect { prefs ->
             val json = prefs[KEY_PROVIDERS]
             if (!json.isNullOrBlank()) {
                 try {
-                    val type = object : TypeToken<List<ProviderConfig>>() {}.type
+                    val type = object : TypeToken<List<com.agentapp.data.models.ProviderConfig>>() {}.type
                     result = gson.fromJson(json, type)
                 } catch (_: Exception) {}
             }
-        }.collect {}
+        }
         return result
     }
 }

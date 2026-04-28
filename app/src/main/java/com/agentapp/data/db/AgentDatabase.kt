@@ -1,6 +1,7 @@
 package com.agentapp.data.db
 
 import androidx.room.*
+import androidx.room.migration.AutoMigrationSpec
 import com.agentapp.data.models.*
 import kotlinx.coroutines.flow.Flow
 

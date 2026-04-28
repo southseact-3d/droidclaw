@@ -53,8 +53,9 @@ object AppModule {
         mpcClient: MpcClient,
         messageDao: MessageDao,
         skillDao: SkillDao,
+        mpcDao: MpcDao,
         settingsRepo: SettingsRepository
-    ) = AgentCore(llmClient, mpcClient, messageDao, skillDao, settingsRepo)
+    ) = AgentCore(llmClient, mpcClient, messageDao, skillDao, mpcDao, settingsRepo)
 }
 
 @Module

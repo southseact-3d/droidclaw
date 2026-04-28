@@ -12,7 +12,7 @@ interface MpcDao {
     fun getServers(): Flow<List<MpcServer>>
 
     @Query("SELECT * FROM mpc_servers WHERE enabled = 1 ORDER BY priority ASC, name ASC")
-    suspend fun getEnabledServers(): List<MpcServer>
+    fun getEnabledServers(): Flow<List<MpcServer>>
 
     @Query("SELECT * FROM mpc_servers WHERE id = :id")
     suspend fun getServer(id: String): MpcServer?
@@ -34,7 +34,7 @@ interface MpcDao {
     suspend fun getToolsForServer(serverId: String): List<MpcTool>
 
     @Query("SELECT * FROM mpc_tools WHERE serverId IN (:serverIds) AND enabled = 1 ORDER BY name ASC")
-    suspend fun getToolsForServers(serverIds: List<String>): List<MpcTool>
+    fun getToolsForServers(serverIds: List<String>): Flow<List<MpcTool>>
 
     @Query("SELECT * FROM mpc_tools WHERE toolId = :toolId")
     suspend fun getTool(toolId: String): MpcTool?

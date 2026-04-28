@@ -41,26 +41,37 @@ class SkillsViewModel @Inject constructor(
                 _state.update { it.copy(skills = skills) }
             }
         }
-        viewModelScope.launch {
-            mpcDao.getEnabledServers().forEach { server ->
-                loadToolsFromServer(server)
-            }
+    viewModelScope.launch {
+      mpcDao.getEnabledServers().collect { servers ->
+        servers.forEach { server ->
+          loadToolsFromServer(server)
         }
-        // Combine tools and servers for display
-        viewModelScope.launch {
-            combine(
-                mpcDao.getToolsForServers(mpcDao.getEnabledServers().map { it.id }),
-                mpcDao.getEnabledServers()
-            ) { tools, servers ->
-                tools.map { tool ->
-                    val server = servers.find { it.id == tool.serverId }!!
-                    tool to server
-                }
-            }.collect { toolsWithServers ->
-                _state.update { it.copy(mpcTools = toolsWithServers) }
-            }
-        }
+      }
     }
+    // Combine tools and servers for display
+    viewModelScope.launch {
+      combine(
+        mpcDao.getEnabledServers(),
+        mpcDao.getServers()
+      ) { enabledServers, allServers ->
+        val enabledIds = enabledServers.map { it.id }
+        allServers.filter { it.id in enabledIds }
+      }.flatMapConcat { servers ->
+        if (servers.isEmpty()) {
+          flowOf(emptyList())
+        } else {
+          mpcDao.getToolsForServers(servers.map { it.id }).map { tools ->
+            tools.mapNotNull { tool ->
+              val server = servers.find { it.id == tool.serverId }
+              server?.let { tool to it }
+            }
+          }
+        }
+      }.collect { toolsWithServers ->
+        _state.update { it.copy(mpcTools = toolsWithServers) }
+      }
+    }
+  }
 
     fun toggleSkill(skill: Skill) {
         viewModelScope.launch {

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.5.2" type="partial_results">
+    <map id="UnsafeIntentLaunch">
+            <map id="unprotected">
+                <entry
+                    name="com.agentapp.MainActivity"
+                    boolean="true"/>
+                <entry
+                    name="com.agentapp.worker.BootReceiver"
+                    boolean="true"/>
+            </map>
+    </map>
+    <map id="NotificationPermission">
+        <entry
+            name="source"
+            boolean="true"/>
+    </map>
+    <map id="UnusedResources">
+        <location id="R.color.surface1"
+            file="${:app*debug*MAIN*sourceProvider*0*resDir*0}/values/colors.xml"
+            line="4"
+            column="12"
+            startOffset="107"
+            endLine="4"
+            endColumn="27"
+            endOffset="122"/>
+        <location id="R.color.amber"
+            file="${:app*debug*MAIN*sourceProvider*0*resDir*0}/values/colors.xml"
+            line="5"
+            column="12"
+            startOffset="152"
+            endLine="5"
+            endColumn="24"
+            endOffset="164"/>
+        <location id="R.string.channel_description"
+            file="${:app*debug*MAIN*sourceProvider*0*resDir*0}/values/strings.xml"
+            line="5"
+            column="13"
+            startOffset="167"
+            endLine="5"
+            endColumn="39"
+            endOffset="193"/>
+        <entry
+            name="model"
+            string="color[obsidian(U),surface1(D),amber(D)],drawable[ic_launcher(U),ic_launcher_round(U),ic_notification(U)],string[app_name(U),channel_name(D),channel_description(D)],style[Theme_AgentApp(U),Theme_AgentApp_Splash(U),Theme_SplashScreen(R)],xml[data_extraction_rules(U),backup_rules(U)];9^0,a^b^0^5^9;;;"/>
+        <location id="R.string.channel_name"
+            file="${:app*debug*MAIN*sourceProvider*0*resDir*0}/values/strings.xml"
+            line="4"
+            column="13"
+            startOffset="106"
+            endLine="4"
+            endColumn="32"
+            endOffset="125"/>
+    </map>
+
+</incidents>

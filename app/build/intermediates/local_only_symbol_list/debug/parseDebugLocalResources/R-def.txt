@@ -1,0 +1,15 @@
+R_DEF: Internal format may change without notice
+local
+color amber
+color obsidian
+color surface1
+drawable ic_launcher
+drawable ic_launcher_round
+drawable ic_notification
+string app_name
+string channel_description
+string channel_name
+style Theme.AgentApp
+style Theme.AgentApp.Splash
+xml backup_rules
+xml data_extraction_rules

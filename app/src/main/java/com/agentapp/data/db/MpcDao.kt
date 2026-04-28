@@ -3,6 +3,7 @@ package com.agentapp.data.db
 import androidx.room.*
 import com.agentapp.data.models.MpcServer
 import com.agentapp.data.models.MpcTool
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MpcDao {

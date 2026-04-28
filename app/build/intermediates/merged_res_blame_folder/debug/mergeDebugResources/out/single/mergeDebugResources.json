@@ -1,0 +1,22 @@
+[
+    {
+        "merged": "/home/engine/.gradle/daemon/8.9/com.agentapp-debug-72:/xml_data_extraction_rules.xml.flat",
+        "source": "/home/engine/.gradle/daemon/8.9/com.agentapp-main-74:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.agentapp-debug-72:/drawable_ic_launcher.xml.flat",
+        "source": "com.agentapp-main-74:/drawable/ic_launcher.xml"
+    },
+    {
+        "merged": "/home/engine/.gradle/daemon/8.9/com.agentapp-debug-72:/drawable_ic_notification.xml.flat",
+        "source": "/home/engine/.gradle/daemon/8.9/com.agentapp-main-74:/drawable/ic_notification.xml"
+    },
+    {
+        "merged": "com.agentapp-debug-72:/drawable_ic_launcher_round.xml.flat",
+        "source": "com.agentapp-main-74:/drawable/ic_launcher_round.xml"
+    },
+    {
+        "merged": "/home/engine/.gradle/daemon/8.9/com.agentapp-debug-72:/xml_backup_rules.xml.flat",
+        "source": "/home/engine/.gradle/daemon/8.9/com.agentapp-main-74:/xml/backup_rules.xml"
+    }
+]

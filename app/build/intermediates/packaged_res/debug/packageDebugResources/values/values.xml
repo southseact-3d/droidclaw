@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="amber">#FFF5A623</color>
+    <color name="obsidian">#FF0D0D0F</color>
+    <color name="surface1">#FF141416</color>
+    <string name="app_name">Agent</string>
+    <string name="channel_description">Notifications from your AI agent</string>
+    <string name="channel_name">Agent notifications</string>
+    <style name="Theme.AgentApp" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/obsidian</item>
+    </style>
+    <style name="Theme.AgentApp.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/obsidian</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_notification</item>
+        <item name="postSplashScreenTheme">@style/Theme.AgentApp</item>
+    </style>
+</resources>
